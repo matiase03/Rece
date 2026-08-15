@@ -25,6 +25,11 @@ jobs:
       - name: Crear .env con la API key
         run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
 
+      - name: Ajustar gradle.properties para CI (evita crash de KSP)
+        run: |
+          sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/' gradle.properties
+          sed -i 's/-Xmx4g -Dfile.encoding=UTF-8/-Xmx4g -Dfile.encoding=UTF-8 -Djava.awt.headless=true/' gradle.properties
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Compilar APK debug
