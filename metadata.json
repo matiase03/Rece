@@ -1,0 +1,7 @@
+{
+  "name": "Recetario",
+  "description": "Recetario propio con multiplicador de ingredientes para impresión PDF y libro de cocina digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
