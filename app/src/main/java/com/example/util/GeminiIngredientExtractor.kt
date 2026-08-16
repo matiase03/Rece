@@ -127,12 +127,7 @@ object GeminiIngredientExtractor {
             // Generation config
             val genConfig = JSONObject().apply {
                 put("temperature", 0.2)
-                put(
-                    "responseFormat",
-                    JSONObject().apply {
-                        put("text", JSONObject().put("mimeType", "application/json"))
-                    }
-                )
+                put("responseMimeType", "application/json")
             }
             put("generationConfig", genConfig)
         }
