@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
-import com.example.BuildConfig
 import com.example.model.RecipeIngredient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,27 +18,19 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
-data class ExtractedRecipeData(
-    val recipeTitle: String? = null,
-    val category: String? = null,
-    val ingredients: List<RecipeIngredient> = emptyList(),
-    val instructions: String? = null,
-    val rawText: String? = null
-)
+object GroqIngredientExtractor {
 
-object GeminiIngredientExtractor {
-
-    private const val MODEL_NAME = "gemini-3.5-flash"
-    private const val API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL_NAME:generateContent"
+    private const val MODEL_NAME = "llama-3.2-11b-vision-preview"
+    private const val API_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
         .build()
 
     /**
-     * Extracts ingredients from a recipe image bitmap or URI using Gemini 3.5 Flash multimodal AI.
+     * Extracts ingredients from a recipe image bitmap or URI using Groq's Llama 3.2 Vision model.
      */
     suspend fun extractFromImageUri(
         context: Context,
@@ -51,7 +42,8 @@ object GeminiIngredientExtractor {
                 ?: return@withContext Result.failure(Exception("No se pudo cargar la imagen seleccionada"))
 
             val base64 = bitmapToBase64(bitmap)
-            val apiKey = apiKeyOverride?.takeIf { it.isNotBlank() } ?: AiSettingsManager.resolveGeminiApiKey(context)
+            val apiKey = apiKeyOverride?.takeIf { it.isNotBlank() } ?: AiSettingsManager.resolveGroqApiKey(context)
+
             extractFromBase64(base64, apiKey)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -67,7 +59,8 @@ object GeminiIngredientExtractor {
         try {
             val scaledBitmap = scaleBitmap(bitmap, 1280)
             val base64 = bitmapToBase64(scaledBitmap)
-            val apiKey = apiKeyOverride?.takeIf { it.isNotBlank() } ?: AiSettingsManager.resolveGeminiApiKey(context)
+            val apiKey = apiKeyOverride?.takeIf { it.isNotBlank() } ?: AiSettingsManager.resolveGroqApiKey(context)
+
             extractFromBase64(base64, apiKey)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -75,111 +68,114 @@ object GeminiIngredientExtractor {
         }
     }
 
-    private suspend fun extractFromBase64(base64Image: String, apiKey: String): Result<ExtractedRecipeData> = withContext(Dispatchers.IO) {
+    private suspend fun extractFromBase64(
+        base64Image: String,
+        apiKey: String
+    ): Result<ExtractedRecipeData> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
-                Exception("Falta configurar la clave de Gemini (GEMINI_API_KEY). Puedes configurarla en Ajustes de IA o como secreto en GitHub.")
+                Exception("Falta configurar la clave de Groq (GROQ_API_KEY). Puedes configurarla en Ajustes de IA o como secreto en GitHub.")
             )
         }
 
         val prompt = """
-            Eres un asistente culinario experto. Analiza minuciosamente la imagen adjunta, que corresponde a una receta (puede ser una página de un libro de cocina, una captura de pantalla, una foto de una revista o una receta escrita a mano).
+            Eres un asistente culinario experto en análisis visual de recetas. Analiza minuciosamente la imagen adjunta (puede ser una captura de pantalla de una aplicación de recetas con tarjetas/columnas, la página de un libro de cocina, una revista o una receta escrita a mano).
             
             Tu objetivo principal es EXTRAER ÚNICAMENTE LOS INGREDIENTES con sus cantidades exactas y unidades de medida.
             
-            Instrucciones para la extracción de ingredientes:
-            1. 'name': Nombre claro del ingrediente (ej. 'Harina 0000', 'Azúcar común', 'Huevos', 'Manteca fría', 'Leche entera').
-            2. 'amount': Cantidad numérica decimal (ej. 250, 2.5, 0.5, 1). Si está en fracciones como 1/2 escribe 0.5, si es 3/4 escribe 0.75, si no especifica pon 1.0.
-            3. 'unit': Unidad de medida estandarizada (ej. 'g', 'kg', 'ml', 'cc', 'l', 'cda', 'cdita', 'unidad', 'taza', 'pizca', 'pote').
-            4. 'notes': Cualquier aclaración de preparación (ej. 'tamizada', 'a temperatura ambiente', 'en cubos', 'rallada', 'opcional').
+            Reglas de extracción:
+            1. Presta especial atención a formatos organizados en columnas o tarjetas (ej. una tarjeta con '500g Harina 000' y otra con '500g Harina 0000'). Relaciona cada número y unidad con su ingrediente correspondiente.
+            2. 'name': Nombre claro del ingrediente (ej. 'Harina 000', 'Harina 0000', 'Huevos', 'Agua', 'Sal', 'Azúcar', 'Levadura', 'Manteca').
+            3. 'amount': Cantidad numérica decimal (ej. 500, 2, 460, 30, 20, 100, 1.5, 0.5). Si está en fracciones como 1/2 escribe 0.5, si es 3/4 escribe 0.75, si es 1/4 escribe 0.25. Si no se especifica cantidad, usa 1.0.
+            4. 'unit': Unidad de medida estandarizada (ej. 'g', 'kg', 'ml', 'cc', 'l', 'cda', 'cdita', 'unidad', 'huevos', 'taza', 'pizca', 'sobre'). Si son huevos o unidades, pon 'unidad'.
+            5. 'notes': Cualquier aclaración de preparación que figure (ej. 'por bollo', 'fresca', 'tibia', 'a temperatura ambiente', 'derretida').
             
-            Si en la imagen se puede leer claramente el título de la receta, extráelo en 'recipeTitle'.
-            Si reconoces la categoría culinaria adecuada ('Pastelería y Tortas', 'Panadería y Masas', 'Platos Principales', 'Repostería y Galletas', 'Postres', 'Salsas y Aderezos', 'Bebidas'), indícala en 'category'.
+            Si en la imagen se puede leer claramente el título de la receta (ej. 'Lomo', 'Pan de Campo', 'Tarta de Manzana'), extráelo en 'recipeTitle'.
+            Si reconoces la categoría culinaria adecuada ('Panadería y Masas', 'Pastelería y Tortas', 'Platos Principales', 'Repostería y Galletas', 'Postres', 'Salsas y Aderezos', 'Bebidas'), indícala en 'category'.
             
-            Responde EXCLUSIVAMENTE con un objeto JSON válido con la siguiente estructura (sin texto adicional):
+            Responde EXCLUSIVAMENTE con un JSON válido con esta estructura:
             {
-              "recipeTitle": "Nombre de la Receta si figura",
-              "category": "Pastelería y Tortas",
+              "recipeTitle": "Nombre de la receta",
+              "category": "Panadería y Masas",
               "ingredients": [
                 {
-                  "name": "Harina de trigo",
-                  "amount": 250.0,
+                  "name": "Harina 000",
+                  "amount": 500.0,
                   "unit": "g",
-                  "notes": "tamizada"
+                  "notes": ""
                 }
               ]
             }
         """.trimIndent()
 
-        // Build Gemini REST Request JSON
-        val requestJson = JSONObject().apply {
-            val contentsArray = JSONArray()
-            val contentObj = JSONObject().apply {
-                val partsArray = JSONArray()
-                // Text part
-                partsArray.put(JSONObject().put("text", prompt))
-                // Inline Image Data part
-                partsArray.put(
-                    JSONObject().put(
-                        "inlineData",
-                        JSONObject().apply {
-                            put("mimeType", "image/jpeg")
-                            put("data", base64Image)
-                        }
-                    )
-                )
-                put("parts", partsArray)
-            }
-            contentsArray.put(contentObj)
-            put("contents", contentsArray)
-
-            // Generation config
-            val genConfig = JSONObject().apply {
-                put("temperature", 0.2)
-                put(
-                    "responseFormat",
-                    JSONObject().apply {
-                        put("text", JSONObject().put("mimeType", "application/json"))
-                    }
-                )
-            }
-            put("generationConfig", genConfig)
-        }
-
-        val requestBody = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-        val url = "$API_ENDPOINT?key=$apiKey"
-
-        val request = Request.Builder()
-            .url(url)
-            .post(requestBody)
-            .build()
-
-        val response = httpClient.newCall(request).execute()
-        val responseBodyString = response.body?.string()
-
-        if (!response.isSuccessful || responseBodyString == null) {
-            val errorMsg = "Error en la API de Gemini (${response.code}): ${responseBodyString ?: response.message}"
-            return@withContext Result.failure(Exception(errorMsg))
-        }
-
         try {
-            val rootJson = JSONObject(responseBodyString)
-            val candidates = rootJson.optJSONArray("candidates")
-            val firstCandidate = candidates?.optJSONObject(0)
-            val content = firstCandidate?.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-            val responseText = parts?.optJSONObject(0)?.optString("text") ?: ""
+            // Build OpenAI/Groq format JSON
+            val messagesArray = JSONArray().apply {
+                val userMessage = JSONObject().apply {
+                    put("role", "user")
+                    val contentArray = JSONArray().apply {
+                        // Text prompt
+                        put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", prompt)
+                        })
+                        // Image URL object with Base64 data
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().apply {
+                                put("url", "data:image/jpeg;base64,$base64Image")
+                            })
+                        })
+                    }
+                    put("content", contentArray)
+                }
+                put(userMessage)
+            }
 
-            val parsedData = parseGeminiJsonResponse(responseText)
+            val requestJson = JSONObject().apply {
+                put("model", MODEL_NAME)
+                put("messages", messagesArray)
+                put("temperature", 0.1)
+                put("response_format", JSONObject().apply {
+                    put("type", "json_object")
+                })
+            }
+
+            val requestBody = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            val request = Request.Builder()
+                .url(API_ENDPOINT)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestBody)
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseBodyString = response.body?.string()
+
+            if (!response.isSuccessful || responseBodyString == null) {
+                val errorMsg = when (response.code) {
+                    401 -> "Clave de Groq inválida. Verifica tu GROQ_API_KEY en Ajustes."
+                    429 -> "Límite de solicitudes en Groq alcanzado temporalmente. Intenta nuevamente en unos instantes o cambia a Gemini."
+                    else -> "Error en Groq (${response.code}): ${responseBodyString ?: response.message}"
+                }
+                return@withContext Result.failure(Exception(errorMsg))
+            }
+
+            val rootJson = JSONObject(responseBodyString)
+            val choices = rootJson.optJSONArray("choices")
+            val firstChoice = choices?.optJSONObject(0)
+            val message = firstChoice?.optJSONObject("message")
+            val contentString = message?.optString("content") ?: ""
+
+            val parsedData = parseGroqJsonResponse(contentString)
             Result.success(parsedData)
         } catch (e: Exception) {
             e.printStackTrace()
-            Result.failure(Exception("Error al procesar la respuesta de ingredientes: ${e.localizedMessage}"))
+            Result.failure(Exception("Error al procesar respuesta de Groq: ${e.localizedMessage}"))
         }
     }
 
-    private fun parseGeminiJsonResponse(rawText: String): ExtractedRecipeData {
-        // Clean markdown codeblocks if present
+    private fun parseGroqJsonResponse(rawText: String): ExtractedRecipeData {
         var cleanJson = rawText.trim()
         if (cleanJson.startsWith("```json")) {
             cleanJson = cleanJson.removePrefix("```json").trim()

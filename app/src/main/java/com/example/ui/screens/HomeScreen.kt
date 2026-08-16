@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.Recipe
+import com.example.ui.components.AiSettingsDialog
 import com.example.ui.components.CategoryChips
 import com.example.ui.components.RecipeCard
 
@@ -82,6 +84,13 @@ fun HomeScreen(
     onOpenDigitalCookbook: () -> Unit
 ) {
     var isSearchExpanded by remember { mutableStateOf(searchQuery.isNotEmpty()) }
+    var showAiSettingsDialog by remember { mutableStateOf(false) }
+
+    if (showAiSettingsDialog) {
+        AiSettingsDialog(
+            onDismissRequest = { showAiSettingsDialog = false }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -155,6 +164,18 @@ fun HomeScreen(
                             imageVector = if (onlyFavorites) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             contentDescription = "Filtrar por favoritos",
                             tint = if (onlyFavorites) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // AI Settings Config Icon
+                    IconButton(
+                        onClick = { showAiSettingsDialog = true },
+                        modifier = Modifier.testTag("open_ai_settings_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Ajustes de IA",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 

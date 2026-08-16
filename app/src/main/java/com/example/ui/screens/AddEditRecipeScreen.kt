@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,11 +28,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,7 +77,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.model.Recipe
 import com.example.model.RecipeIngredient
-import com.example.util.GeminiIngredientExtractor
+import com.example.ui.components.AiSettingsDialog
+import com.example.util.AiProvider
+import com.example.util.AiSettingsManager
+import com.example.util.RecipeAiExtractor
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,6 +120,20 @@ fun AddEditRecipeScreen(
     var isScanningImage by remember { mutableStateOf(false) }
     var scanSuccessMessage by remember { mutableStateOf<String?>(null) }
     var scanErrorMessage by remember { mutableStateOf<String?>(null) }
+    var showAiSettingsDialog by remember { mutableStateOf(false) }
+
+    val activeAiProvider = remember(showAiSettingsDialog) {
+        AiSettingsManager.getActiveProvider(context)
+    }
+
+    if (showAiSettingsDialog) {
+        AiSettingsDialog(
+            onDismissRequest = { showAiSettingsDialog = false },
+            onSettingsSaved = {
+                scanErrorMessage = null
+            }
+        )
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -211,40 +231,81 @@ fun AddEditRecipeScreen(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(28.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondary,
-                                    modifier = Modifier
-                                        .padding(5.dp)
-                                        .size(18.dp)
-                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (activeAiProvider == AiProvider.GROQ) Icons.Default.Bolt else Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSecondary,
+                                        modifier = Modifier
+                                            .padding(5.dp)
+                                            .size(18.dp)
+                                    )
+                                }
+
+                                Column {
+                                    Text(
+                                        text = "Escanear Receta con IA",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Motor: ${if (activeAiProvider == AiProvider.GROQ) "Groq (Llama 3.2 Vision)" else "Google Gemini"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
 
-                            Column {
-                                Text(
-                                    text = "Escanear desde Foto o Libro (IA)",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Copiá automáticamente solo los ingredientes",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            // Quick settings button
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.padding(start = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .clickable { showAiSettingsDialog = true }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "Configurar IA",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Cambiar",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
 
                         Text(
-                            text = "Podés subir una foto de un libro impreso, recorte o receta escrita a mano para que Gemini extraiga los ingredientes con sus cantidades y unidades.",
+                            text = if (activeAiProvider == AiProvider.GROQ) {
+                                "Extrae automáticamente ingredientes, cantidades y unidades desde fotos, tarjetas o libros con la velocidad ultra rápida de Groq."
+                            } else {
+                                "Extrae automáticamente ingredientes, cantidades y unidades desde fotos o libros con Google Gemini Multimodal."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -267,6 +328,7 @@ fun AddEditRecipeScreen(
                                     modifier = Modifier
                                         .size(64.dp)
                                         .clip(RoundedCornerShape(8.dp))
+                                        .testTag("selected_recipe_image_preview")
                                 )
 
                                 Column(modifier = Modifier.weight(1f)) {
@@ -276,7 +338,7 @@ fun AddEditRecipeScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Lista para procesar",
+                                        text = "Lista para procesar con ${if (activeAiProvider == AiProvider.GROQ) "Groq" else "Gemini"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -307,7 +369,7 @@ fun AddEditRecipeScreen(
                                         scanSuccessMessage = null
                                         scanErrorMessage = null
                                         try {
-                                            val result = GeminiIngredientExtractor.extractFromImageUri(context, uri)
+                                            val result = RecipeAiExtractor.extractFromImageUri(context, uri)
                                             result.onSuccess { data ->
                                                 if (data.ingredients.isNotEmpty()) {
                                                     if (title.isBlank() && !data.recipeTitle.isNullOrBlank()) {
@@ -349,11 +411,18 @@ fun AddEditRecipeScreen(
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Analizando foto con IA...")
+                                    Text("Analizando foto con ${if (activeAiProvider == AiProvider.GROQ) "Groq" else "Gemini"}...")
                                 } else {
-                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        imageVector = if (activeAiProvider == AiProvider.GROQ) Icons.Default.Bolt else Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Extraer Ingredientes con IA", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "Extraer Ingredientes con ${if (activeAiProvider == AiProvider.GROQ) "Groq" else "Gemini"}",
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         } else {
@@ -398,42 +467,61 @@ fun AddEditRecipeScreen(
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(20.dp)
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Text(
                                         text = scanSuccessMessage ?: "",
                                         style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
                         }
 
-                        // Scan Error feedback
+                        // Scan Error feedback with quick settings action
                         if (scanErrorMessage != null) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.errorContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ErrorOutline,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = scanErrorMessage ?: "",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = scanErrorMessage ?: "",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showAiSettingsDialog = true },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Configurar Claves / Proveedor", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
                         }

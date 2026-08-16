@@ -170,7 +170,7 @@ object PdfGenerator {
 
         // 2. Section: INGREDIENTES ORIGINALES (Formato Grande)
         checkPageBreak(30f)
-        canvas.drawText("INGREDIENTES (Receta Base)", MARGIN_LEFT, currentY, sectionHeadingPaint)
+        canvas.drawText("1. INGREDIENTES (Receta Base)", MARGIN_LEFT, currentY, sectionHeadingPaint)
         currentY += 14f
 
         val ingredientBgRect = RectF(MARGIN_LEFT, currentY, MARGIN_RIGHT, currentY + (recipe.ingredients.size * 15f) + 12f)
@@ -204,7 +204,7 @@ object PdfGenerator {
         // 3. Section: PREPARACIÓN / INSTRUCCIONES
         if (recipe.instructions.isNotBlank()) {
             checkPageBreak(30f)
-            canvas.drawText("PREPARACIÓN PASO A PASO", MARGIN_LEFT, currentY, sectionHeadingPaint)
+            canvas.drawText("2. PREPARACIÓN PASO A PASO", MARGIN_LEFT, currentY, sectionHeadingPaint)
             currentY += 16f
 
             val instructionLines = recipe.instructions.split("\n")
@@ -268,11 +268,15 @@ object PdfGenerator {
             val chunks = multipliers.chunked(6)
 
             for ((chunkIndex, chunkMultipliers) in chunks.withIndex()) {
-                checkPageBreak(40f + (recipe.ingredients.size * 16f))
-                if (chunkIndex == 0) {
-                    canvas.drawText("TABLA DE MULTIPLICACIÓN DE INGREDIENTES", MARGIN_LEFT, currentY, sectionHeadingPaint)
-                    currentY += 12f
+                val tableHeaderTitle = if (chunks.size == 1) {
+                    "3. TABLA DE MULTIPLICACIÓN DE INGREDIENTES (x0.5 a x${RecipeIngredient.formatAmount(maxLimit.toDouble())})"
+                } else {
+                    "3. TABLA DE MULTIPLICACIÓN (Parte ${chunkIndex + 1}: x${RecipeIngredient.formatAmount(chunkMultipliers.first().toDouble())} a x${RecipeIngredient.formatAmount(chunkMultipliers.last().toDouble())})"
                 }
+
+                checkPageBreak(40f + (recipe.ingredients.size * 16f))
+                canvas.drawText(tableHeaderTitle, MARGIN_LEFT, currentY, sectionHeadingPaint)
+                currentY += 12f
 
                 // Draw Table
                 val ingColWidth = 175f
