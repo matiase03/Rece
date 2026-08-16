@@ -136,6 +136,8 @@ object GroqIngredientExtractor {
                 put("model", MODEL_NAME)
                 put("messages", messagesArray)
                 put("temperature", 0.1)
+                put("max_completion_tokens", 2048)
+                put("reasoning_effort", "none")
                 put("response_format", JSONObject().apply {
                     put("type", "json_object")
                 })
