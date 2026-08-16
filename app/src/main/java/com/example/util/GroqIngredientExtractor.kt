@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 
 object GroqIngredientExtractor {
 
-    private const val MODEL_NAME = "llama-3.2-11b-vision-preview"
+    private const val MODEL_NAME = "qwen/qwen3.6-27b"
     private const val API_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
     private val httpClient = OkHttpClient.Builder()
